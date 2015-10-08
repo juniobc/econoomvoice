@@ -2,9 +2,9 @@ package com.speech.activator;
 
 import java.util.List;
 
-import root.gast.speech.SpeechRecognitionUtil;
-import root.gast.speech.text.WordList;
-import root.gast.speech.text.match.SoundsLikeWordMatcher;
+import com.speech.SpeechRecognitionUtil;
+import com.speech.text.WordList;
+import com.speech.text.match.SoundsLikeWordMatcher;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
