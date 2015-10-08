@@ -1,84 +1,195 @@
 package com.speech.activator;
 
-import android.speech.*;
-import android.os.*;
-import android.content.*;
+import java.util.List;
 
-public class WordActivator implements SpeechActivator, RecognitionListener{
-	
-	private static final String TAG = "WordActivator";
-	
-	private Context context;
-	private SpeechRecognizer recognizer;
-	private SoundsLikeWordMatcher matcher;
+import root.gast.speech.SpeechRecognitionUtil;
+import root.gast.speech.text.WordList;
+import root.gast.speech.text.match.SoundsLikeWordMatcher;
+import android.content.Context;
+import android.content.Intent;
+import android.os.Bundle;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
+import android.util.Log;
 
-	@Override
-	public void onReadyForSpeech(Bundle p1)
-	{
-		// TODO: Implement this method
-	}
+/**
+ * Uses direct speech recognition to activate when the user speaks
+ * one of the target words
+ * @author Greg Milette &#60;<a
+ *         href="mailto:gregorym@gmail.com">gregorym@gmail.com</a>&#62;
+ */
+public class WordActivator implements SpeechActivator, RecognitionListener
+{
+    private static final String TAG = "WordActivator";
 
-	@Override
-	public void onBeginningOfSpeech()
-	{
-		// TODO: Implement this method
-	}
+    private Context context;
+    private SpeechRecognizer recognizer;
+    private SoundsLikeWordMatcher matcher;
 
-	@Override
-	public void onRmsChanged(float p1)
-	{
-		// TODO: Implement this method
-	}
+    private SpeechActivationListener resultListener;
 
-	@Override
-	public void onBufferReceived(byte[] p1)
-	{
-		// TODO: Implement this method
-	}
+    public WordActivator(Context context,
+            SpeechActivationListener resultListener, String... targetWords)
+    {
+        this.context = context;
+        this.matcher = new SoundsLikeWordMatcher(targetWords);
+        this.resultListener = resultListener;
+    }
 
-	@Override
-	public void onEndOfSpeech()
-	{
-		// TODO: Implement this method
-	}
+    @Override
+    public void detectActivation()
+    {
+        recognizeSpeechDirectly();
+    }
 
-	@Override
-	public void onError(int p1)
-	{
-		// TODO: Implement this method
-	}
+    private void recognizeSpeechDirectly()
+    {
+        Intent recognizerIntent =
+                new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_WEB_SEARCH);
+        // accept partial results if they come
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+        SpeechRecognitionUtil.recognizeSpeechDirectly(context,
+                recognizerIntent, this, getSpeechRecognizer());
+    }
 
-	@Override
-	public void onResults(Bundle p1)
-	{
-		// TODO: Implement this method
-	}
+    public void stop()
+    {
+        if (getSpeechRecognizer() != null)
+        {
+            getSpeechRecognizer().stopListening();
+            getSpeechRecognizer().cancel();
+            getSpeechRecognizer().destroy();
+        }
+    }
 
-	@Override
-	public void onPartialResults(Bundle p1)
-	{
-		// TODO: Implement this method
-	}
+    @Override
+    public void onResults(Bundle results)
+    {
+        Log.d(TAG, "full results");
+        receiveResults(results);
+    }
 
-	@Override
-	public void onEvent(int p1, Bundle p2)
-	{
-		// TODO: Implement this method
-	}
+    @Override
+    public void onPartialResults(Bundle partialResults)
+    {
+        Log.d(TAG, "partial results");
+        receiveResults(partialResults);
+    }
 
-	@Override
-	public void detectActivator()
-	{
-		// TODO: Implement this method
-	}
+    /**
+     * common method to process any results bundle from {@link SpeechRecognizer}
+     */
+    private void receiveResults(Bundle results)
+    {
+        if ((results != null)
+                && results.containsKey(SpeechRecognizer.RESULTS_RECOGNITION))
+        {
+            List<String> heard =
+                    results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+            float[] scores =
+                    results.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES);
+            receiveWhatWasHeard(heard, scores);
+        }
+        else
+        {
+            Log.d(TAG, "no results");
+        }
+    }
 
-	@Override
-	public void stop()
-	{
-		// TODO: Implement this method
-	}
+    private void receiveWhatWasHeard(List<String> heard, float[] scores)
+    {
+        boolean heardTargetWord = false;
+        // find the target word
+        for (String possible : heard)
+        {
+            WordList wordList = new WordList(possible);
+            if (matcher.isIn(wordList.getWords()))
+            {
+                Log.d(TAG, "HEARD IT!");
+                heardTargetWord = true;
+                break;
+            }
+        }
 
+        if (heardTargetWord)
+        {
+            stop();
+            resultListener.activated(true);
+        }
+        else
+        {
+            // keep going
+            recognizeSpeechDirectly();
+        }
+    }
 
-	
-	
+    @Override
+    public void onError(int errorCode)
+    {
+        if ((errorCode == SpeechRecognizer.ERROR_NO_MATCH)
+                || (errorCode == SpeechRecognizer.ERROR_SPEECH_TIMEOUT))
+        {
+            Log.d(TAG, "didn't recognize anything");
+            // keep going
+            recognizeSpeechDirectly();
+        }
+        else
+        {
+            Log.d(TAG,
+                    "FAILED "
+                            + SpeechRecognitionUtil
+                                    .diagnoseErrorCode(errorCode));
+        }
+    }
+
+    /**
+     * lazy initialize the speech recognizer
+     */
+    private SpeechRecognizer getSpeechRecognizer()
+    {
+        if (recognizer == null)
+        {
+            recognizer = SpeechRecognizer.createSpeechRecognizer(context);
+        }
+        return recognizer;
+    }
+
+    // other unused methods from RecognitionListener...
+
+    @Override
+    public void onReadyForSpeech(Bundle params)
+    {
+        Log.d(TAG, "ready for speech " + params);
+    }
+
+    @Override
+    public void onEndOfSpeech()
+    {
+    }
+
+    /**
+     * @see android.speech.RecognitionListener#onBeginningOfSpeech()
+     */
+    @Override
+    public void onBeginningOfSpeech()
+    {
+    }
+
+    @Override
+    public void onBufferReceived(byte[] buffer)
+    {
+    }
+
+    @Override
+    public void onRmsChanged(float rmsdB)
+    {
+    }
+
+    @Override
+    public void onEvent(int eventType, Bundle params)
+    {
+    }
 }
